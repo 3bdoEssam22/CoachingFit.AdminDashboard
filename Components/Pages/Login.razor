@@ -1,0 +1,100 @@
+@page "/login"
+@layout EmptyLayout
+@inject AuthApiClient AuthApi
+@inject CircuitAuthenticationStateProvider AuthProvider
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Sign in — CoachingFit Admin</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
+    <MudPaper Class="pa-8" Elevation="4">
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h5" Align="Align.Center">CoachingFit Admin</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center" Class="mud-text-secondary">
+                Sign in to manage coaches and certificates.
+            </MudText>
+
+            <MudForm @ref="_form" Model="_credentials">
+                <MudTextField T="string"
+                              @bind-Value="_credentials.Email"
+                              Label="Email"
+                              InputType="InputType.Email"
+                              Required="true"
+                              RequiredError="Email is required."
+                              Variant="Variant.Outlined" />
+                <MudTextField T="string"
+                              @bind-Value="_credentials.Password"
+                              Label="Password"
+                              InputType="InputType.Password"
+                              Required="true"
+                              RequiredError="Password is required."
+                              Variant="Variant.Outlined"
+                              Class="mt-3" />
+            </MudForm>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="_busy"
+                       OnClick="SubmitAsync">
+                @if (_busy)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span class="ml-2">Signing in...</span>
+                }
+                else
+                {
+                    <span>Sign in</span>
+                }
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+
+    private MudForm? _form;
+    private bool _busy;
+    private readonly LoginRequest _credentials = new() { Email = string.Empty, Password = string.Empty };
+
+    private async Task SubmitAsync()
+    {
+        if (_form is null) return;
+        await _form.Validate();
+        if (!_form.IsValid) return;
+
+        _busy = true;
+        try
+        {
+            var resp = await AuthApi.LoginAsync(_credentials);
+            if (resp.StatusCode is < 200 or >= 300 || resp.Data is null)
+            {
+                Snackbar.Add(string.IsNullOrWhiteSpace(resp.Message) ? "Login failed." : resp.Message, Severity.Error);
+                return;
+            }
+
+            if (!string.Equals(resp.Data.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                Snackbar.Add("This account is not an admin.", Severity.Error);
+                return;
+            }
+
+            AuthProvider.SignIn(resp.Data);
+            Snackbar.Add($"Welcome, {resp.Data.FullName}.", Severity.Success);
+
+            var target = string.IsNullOrWhiteSpace(ReturnUrl) ? "/coaches/pending" : ReturnUrl;
+            Nav.NavigateTo(target, forceLoad: false, replace: true);
+        }
+        catch (HttpRequestException)
+        {
+            Snackbar.Add("Cannot reach the backend. Is the gateway running?", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

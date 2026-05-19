@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+    <UserSecretsId>coachingfit-admin-dashboard-9f3e2a7b</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MudBlazor" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Backend\src\Services\Identity\CoachingFit.Identity.Shared\CoachingFit.Identity.Shared.csproj" />
+    <ProjectReference Include="..\..\Backend\src\Services\User\CoachingFit.User.Shared\CoachingFit.User.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

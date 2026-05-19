@@ -1,0 +1,283 @@
+@page "/coaches/{UserId}"
+@attribute [Authorize(Roles = "Admin")]
+@inject CoachApiClient CoachApi
+@inject CertificateApiClient CertApi
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>Coach Review</PageTitle>
+
+<MudButton StartIcon="@Icons.Material.Filled.ArrowBack"
+           Variant="Variant.Text"
+           Class="mb-3"
+           OnClick="@(() => Nav.NavigateTo("/coaches/pending"))">
+    Back to pending list
+</MudButton>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_profile is null)
+{
+    <MudAlert Severity="Severity.Warning">Coach profile not found.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                    @if (!string.IsNullOrWhiteSpace(_profile.ProfilePhotoUrl))
+                    {
+                        <MudAvatar Size="Size.Large" Style="width: 120px; height: 120px;">
+                            <MudImage Src="@_profile.ProfilePhotoUrl" />
+                        </MudAvatar>
+                    }
+                    else
+                    {
+                        <MudAvatar Color="Color.Secondary" Size="Size.Large" Style="width: 120px; height: 120px;">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Large" />
+                        </MudAvatar>
+                    }
+                    <MudText Typo="Typo.h6" Align="Align.Center">Coach @_profile.UserId</MudText>
+                    <MudDivider Class="my-2" />
+                    <MudSimpleTable Dense="true" Bordered="false" Striped="false" Style="width:100%; background: transparent;">
+                        <tbody>
+                            <tr>
+                                <td><strong>Gender</strong></td>
+                                <td>@_profile.Gender</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Experience</strong></td>
+                                <td>@_profile.ExperienceYears years</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Created</strong></td>
+                                <td>@_profile.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                            </tr>
+                        </tbody>
+                    </MudSimpleTable>
+                    <MudDivider Class="my-2" />
+                    <MudText Typo="Typo.subtitle2">Bio</MudText>
+                    <MudText Typo="Typo.body2">@_profile.Bio</MudText>
+                </MudStack>
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mt-3" Elevation="2">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Success"
+                           FullWidth="true"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.CheckCircle"
+                           Disabled="_activating"
+                           OnClick="ActivateAsync">
+                    @if (_activating)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                        <span class="ml-2">Activating...</span>
+                    }
+                    else
+                    {
+                        <span>Activate Coach</span>
+                    }
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            <MudText Typo="Typo.h6" Class="mb-3">Certificates (@_certs.Count)</MudText>
+            @if (_certs.Count == 0)
+            {
+                <MudPaper Class="pa-6" Outlined="true">
+                    <MudText Align="Align.Center">No certificates uploaded.</MudText>
+                </MudPaper>
+            }
+            else
+            {
+                @foreach (var cert in _certs)
+                {
+                    <MudPaper Class="pa-4 mb-3" Elevation="1">
+                        <MudGrid>
+                            <MudItem xs="12" md="7">
+                                <MudText Typo="Typo.subtitle1"><strong>@cert.Title</strong></MudText>
+                                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                                    @cert.IssuingOrganization · Issued @cert.IssuedDate.ToString("yyyy-MM")
+                                </MudText>
+                                <MudChip T="string"
+                                         Color="@StatusColor(cert.Status)"
+                                         Variant="Variant.Filled"
+                                         Size="Size.Small"
+                                         Class="mt-2">
+                                    @cert.Status
+                                </MudChip>
+                                @if (!string.IsNullOrWhiteSpace(cert.RejectionReason))
+                                {
+                                    <MudText Typo="Typo.caption" Class="mt-1" Style="display:block;">
+                                        Reason: @cert.RejectionReason
+                                    </MudText>
+                                }
+                            </MudItem>
+                            <MudItem xs="12" md="5" Class="d-flex justify-end gap-2">
+                                <MudButton Variant="Variant.Outlined"
+                                           Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.OpenInNew"
+                                           Href="@cert.FileUrl"
+                                           Target="_blank">
+                                    Open
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Success"
+                                           Size="Size.Small"
+                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           OnClick="@(() => ApproveAsync(cert.Id))">
+                                    Approve
+                                </MudButton>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           OnClick="@(() => RejectAsync(cert.Id))">
+                                    Reject
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+                    </MudPaper>
+                }
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public string UserId { get; set; } = string.Empty;
+
+    private bool _loading = true;
+    private bool _activating;
+    private Guid? _busyCertId;
+    private string? _error;
+    private CoachProfileResponse? _profile;
+    private List<AdminCertificateResponse> _certs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var profilesTask = CoachApi.GetProfilesByUserIdsAsync([UserId]);
+            var certsTask = CertApi.GetForCoachAsync(UserId);
+            await Task.WhenAll(profilesTask, certsTask);
+
+            _profile = (await profilesTask).FirstOrDefault();
+            _certs = (await certsTask).ToList();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Cannot reach the backend: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ApproveAsync(Guid certId)
+    {
+        _busyCertId = certId;
+        try
+        {
+            var (ok, message) = await CertApi.ApproveAsync(certId);
+            if (ok)
+            {
+                Snackbar.Add("Certificate approved.", Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(message ?? "Failed to approve.", Severity.Error);
+            }
+        }
+        finally
+        {
+            _busyCertId = null;
+        }
+    }
+
+    private async Task RejectAsync(Guid certId)
+    {
+        var dialog = await Dialogs.ShowAsync<RejectReasonDialog>("Reject certificate");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        var reason = (string?)result.Data;
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        _busyCertId = certId;
+        try
+        {
+            var (ok, message) = await CertApi.RejectAsync(certId, new RejectCertificateRequest { Reason = reason! });
+            if (ok)
+            {
+                Snackbar.Add("Certificate rejected.", Severity.Info);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(message ?? "Failed to reject.", Severity.Error);
+            }
+        }
+        finally
+        {
+            _busyCertId = null;
+        }
+    }
+
+    private async Task ActivateAsync()
+    {
+        var confirm = await Dialogs.ShowMessageBox(
+            "Activate coach?",
+            $"This will activate coach {UserId}. They will be able to access the live coach features. Continue?",
+            yesText: "Activate", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        _activating = true;
+        try
+        {
+            var ok = await CoachApi.ActivateAsync(UserId);
+            if (ok)
+            {
+                Snackbar.Add("Coach activated.", Severity.Success);
+                Nav.NavigateTo("/coaches/pending", forceLoad: false, replace: true);
+            }
+            else
+            {
+                Snackbar.Add("Failed to activate the coach.", Severity.Error);
+            }
+        }
+        finally
+        {
+            _activating = false;
+        }
+    }
+
+    private static bool IsPending(AdminCertificateResponse c) =>
+        string.Equals(c.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+
+    private static Color StatusColor(string status) => status?.ToLowerInvariant() switch
+    {
+        "approved" => Color.Success,
+        "rejected" => Color.Error,
+        _ => Color.Warning
+    };
+}

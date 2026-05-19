@@ -1,0 +1,12 @@
+@page "/"
+@attribute [Authorize(Roles = "Admin")]
+@inject NavigationManager Nav
+
+<PageTitle>CoachingFit Admin</PageTitle>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Nav.NavigateTo("/coaches/pending", forceLoad: false, replace: true);
+    }
+}

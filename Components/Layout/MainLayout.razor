@@ -1,0 +1,48 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject CircuitAuthenticationStateProvider AuthProvider
+
+<MudThemeProvider IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <AuthorizeView>
+        <Authorized>
+            <MudAppBar Elevation="1">
+                <MudText Typo="Typo.h6" Class="ml-2">CoachingFit Admin</MudText>
+                <MudSpacer />
+                <MudText Typo="Typo.body2" Class="mr-3">@context.User.Identity?.Name</MudText>
+                <MudButton StartIcon="@Icons.Material.Filled.Logout"
+                           Color="Color.Inherit"
+                           OnClick="Logout">Logout</MudButton>
+            </MudAppBar>
+            <MudDrawer Open="true" Variant="@DrawerVariant.Mini" OpenMiniOnHover="true" Elevation="1">
+                <NavMenu />
+            </MudDrawer>
+        </Authorized>
+        <NotAuthorized>
+            <MudAppBar Elevation="1">
+                <MudText Typo="Typo.h6" Class="ml-2">CoachingFit Admin</MudText>
+            </MudAppBar>
+        </NotAuthorized>
+    </AuthorizeView>
+    <MudMainContent Class="mt-16 pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private void Logout()
+    {
+        AuthProvider.SignOut();
+        Nav.NavigateTo("/login", forceLoad: false, replace: true);
+    }
+}

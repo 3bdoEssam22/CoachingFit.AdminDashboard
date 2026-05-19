@@ -1,0 +1,34 @@
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-2">
+            Provide a brief reason. The coach will see this on their certificates screen.
+        </MudText>
+        <MudTextField @bind-Value="Reason"
+                      Label="Reason"
+                      Lines="3"
+                      Variant="Variant.Outlined"
+                      AutoFocus="true"
+                      Counter="500"
+                      MaxLength="500" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error"
+                   Variant="Variant.Filled"
+                   OnClick="Submit"
+                   Disabled="@(string.IsNullOrWhiteSpace(Reason))">
+            Reject
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    public string Reason { get; set; } = string.Empty;
+
+    private void Cancel() => Dialog.Cancel();
+    private void Submit() => Dialog.Close(DialogResult.Ok(Reason.Trim()));
+}

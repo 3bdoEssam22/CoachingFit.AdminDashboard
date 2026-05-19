@@ -1,0 +1,105 @@
+@page "/coaches/pending"
+@attribute [Authorize(Roles = "Admin")]
+@inject CoachApiClient CoachApi
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Pending Coaches</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Pending Coaches</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+    Coaches who have created a profile and are awaiting activation.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else if (_profiles.Count == 0)
+{
+    <MudPaper Class="pa-6" Outlined="true">
+        <MudText Typo="Typo.body1" Align="Align.Center">No coaches are pending review.</MudText>
+    </MudPaper>
+}
+else
+{
+    <MudTable Items="_profiles" Hover="true" Bordered="false" Striped="true" Dense="false">
+        <HeaderContent>
+            <MudTh></MudTh>
+            <MudTh>User ID</MudTh>
+            <MudTh>Gender</MudTh>
+            <MudTh>Experience</MudTh>
+            <MudTh>Created</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (!string.IsNullOrWhiteSpace(context.ProfilePhotoUrl))
+                {
+                    <MudAvatar Size="Size.Medium">
+                        <MudImage Src="@context.ProfilePhotoUrl" Alt="@context.UserId" />
+                    </MudAvatar>
+                }
+                else
+                {
+                    <MudAvatar Color="Color.Secondary" Size="Size.Medium">
+                        @context.UserId.Substring(0, 1).ToUpperInvariant()
+                    </MudAvatar>
+                }
+            </MudTd>
+            <MudTd>
+                <MudText Typo="Typo.body2" Style="font-family: monospace;">@context.UserId</MudText>
+            </MudTd>
+            <MudTd>@context.Gender</MudTd>
+            <MudTd>@context.ExperienceYears yr</MudTd>
+            <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+            <MudTd>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           OnClick="@(() => Nav.NavigateTo($"/coaches/{context.UserId}"))">
+                    Review
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<CoachProfileResponse> _profiles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var ids = (await CoachApi.GetPendingUserIdsAsync()).ToList();
+            if (ids.Count == 0)
+            {
+                _profiles = new List<CoachProfileResponse>();
+                return;
+            }
+            _profiles = (await CoachApi.GetProfilesByUserIdsAsync(ids)).ToList();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Cannot reach the backend: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}
