@@ -16,6 +16,12 @@ public class CertificateApiClient(HttpClient _http)
         return resp?.Data ?? [];
     }
 
+    public async Task<IEnumerable<AdminCertificateResponse>> GetAllPendingAsync(CancellationToken ct = default)
+    {
+        var resp = await _http.GetFromJsonAsync<UserCertListResponse>("api/CoachCertificate/pending", ct);
+        return resp?.Data ?? [];
+    }
+
     public async Task<(bool ok, string? message)> ApproveAsync(Guid certificateId, CancellationToken ct = default)
     {
         var resp = await _http.PutAsync(

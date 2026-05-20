@@ -1,0 +1,159 @@
+@page "/dashboard"
+@attribute [Authorize(Roles = "Admin")]
+@inject CoachApiClient CoachApi
+@inject CertificateApiClient CertApi
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">Dashboard</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Primary" Size="Size.Large" />
+                    <MudText Typo="Typo.h4">@_stats!.TotalCoaches</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Total Coaches</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
+                    <MudText Typo="Typo.h4">@_stats!.ActiveCoaches</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Active Coaches</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Color="Color.Warning" Size="Size.Large" />
+                    <MudText Typo="Typo.h4">@_stats!.PendingCoaches</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Pending Approval</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack AlignItems="AlignItems.Center" Spacing="1">
+                    <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Info" Size="Size.Large" />
+                    <MudText Typo="Typo.h4">@_stats!.TotalTrainees</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">Total Trainees</MudText>
+                </MudStack>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mt-4">
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.h6">Pending Coaches</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="@(() => Nav.NavigateTo("/coaches/pending"))">
+                        View all →
+                    </MudButton>
+                </MudStack>
+                @if (_pendingCoaches.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No coaches pending review.</MudText>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Style="background:transparent;">
+                        <tbody>
+                            @foreach (var coach in _pendingCoaches.Take(5))
+                            {
+                                <tr style="cursor:pointer;" @onclick="@(() => Nav.NavigateTo($"/coaches/{coach.UserId}"))">
+                                    <td>@coach.UserId</td>
+                                    <td>@coach.Gender</td>
+                                    <td>@coach.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.h6">Pending Certificates</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary"
+                               OnClick="@(() => Nav.NavigateTo("/coaches/pending"))">
+                        View coaches →
+                    </MudButton>
+                </MudStack>
+                @if (_pendingCerts.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">No certificates pending review.</MudText>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Style="background:transparent;">
+                        <tbody>
+                            @foreach (var cert in _pendingCerts.Take(5))
+                            {
+                                <tr>
+                                    <td>@cert.Title</td>
+                                    <td>@cert.IssuingOrganization</td>
+                                    <td>@cert.IssuedDate.ToString("yyyy-MM")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private CoachingFit.Identity.Shared.DTOs.Responses.AdminStatsResponse? _stats;
+    private List<CoachingFit.User.Shared.DTOs.Responses.CoachProfileResponse> _pendingCoaches = new();
+    private List<CoachingFit.User.Shared.DTOs.Responses.AdminCertificateResponse> _pendingCerts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var statsTask = CoachApi.GetStatsAsync();
+            var pendingIdsTask = CoachApi.GetPendingUserIdsAsync();
+            var pendingCertsTask = CertApi.GetAllPendingAsync();
+            await Task.WhenAll(statsTask, pendingIdsTask, pendingCertsTask);
+
+            _stats = await statsTask;
+            var ids = (await pendingIdsTask).ToList();
+            if (ids.Count > 0)
+                _pendingCoaches = (await CoachApi.GetProfilesByUserIdsAsync(ids)).ToList();
+            _pendingCerts = (await pendingCertsTask).ToList();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Cannot reach the backend: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

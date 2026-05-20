@@ -1,0 +1,118 @@
+@page "/coaches"
+@attribute [Authorize(Roles = "Admin")]
+@inject CoachApiClient CoachApi
+@inject NavigationManager Nav
+
+<PageTitle>All Coaches</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">All Coaches</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error">@_error</MudAlert>
+}
+else
+{
+    <MudTable Items="_coaches" Dense="true" Hover="true" Bordered="false"
+              Filter="@(c => FilterCoach(c, _search))">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_search"
+                          Placeholder="Search by userId or gender..."
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          IconSize="Size.Medium"
+                          Class="mt-0" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Photo</MudTh>
+            <MudTh>User ID</MudTh>
+            <MudTh>Gender</MudTh>
+            <MudTh>Experience</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Created</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                @if (!string.IsNullOrWhiteSpace(context.ProfilePhotoUrl))
+                {
+                    <MudAvatar Size="Size.Small">
+                        <MudImage Src="@context.ProfilePhotoUrl" />
+                    </MudAvatar>
+                }
+                else
+                {
+                    <MudAvatar Color="Color.Secondary" Size="Size.Small">
+                        <MudIcon Icon="@Icons.Material.Filled.Person" />
+                    </MudAvatar>
+                }
+            </MudTd>
+            <MudTd>@context.UserId</MudTd>
+            <MudTd>@context.Gender</MudTd>
+            <MudTd>@context.ExperienceYears yrs</MudTd>
+            <MudTd>
+                <MudChip T="string"
+                         Color="@(_activeIds.Contains(context.UserId) ? Color.Success : Color.Warning)"
+                         Variant="Variant.Filled"
+                         Size="Size.Small">
+                    @(_activeIds.Contains(context.UserId) ? "Active" : "Pending")
+                </MudChip>
+            </MudTd>
+            <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
+            <MudTd>
+                <MudButton Variant="Variant.Outlined"
+                           Size="Size.Small"
+                           OnClick="@(() => Nav.NavigateTo($"/coaches/{context.UserId}"))">
+                    Review
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>No coaches registered yet.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string _search = string.Empty;
+    private List<CoachingFit.User.Shared.DTOs.Responses.CoachProfileResponse> _coaches = new();
+    private HashSet<string> _activeIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profilesTask = CoachApi.GetAllProfilesAsync();
+            var allIdsTask = CoachApi.GetAllUserIdsAsync();
+            var pendingIdsTask = CoachApi.GetPendingUserIdsAsync();
+            await Task.WhenAll(profilesTask, allIdsTask, pendingIdsTask);
+
+            _coaches = (await profilesTask).ToList();
+            var allIds = (await allIdsTask).ToHashSet();
+            var pendingIds = (await pendingIdsTask).ToHashSet();
+            _activeIds = allIds.Except(pendingIds).ToHashSet();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = $"Cannot reach the backend: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static bool FilterCoach(
+        CoachingFit.User.Shared.DTOs.Responses.CoachProfileResponse c, string search)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return true;
+        return c.UserId.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || c.Gender.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+}

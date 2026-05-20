@@ -32,6 +32,9 @@ builder.Services.AddHttpClient<CoachApiClient>(c => c.BaseAddress = new Uri(apiB
 builder.Services.AddHttpClient<CertificateApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>();
 
+builder.Services.AddHttpClient<TraineeApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl))
+    .AddHttpMessageHandler<BearerTokenHandler>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
