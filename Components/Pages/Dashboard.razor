@@ -16,6 +16,10 @@ else if (_error is not null)
 {
     <MudAlert Severity="Severity.Error">@_error</MudAlert>
 }
+else if (_stats is null)
+{
+    <MudAlert Severity="Severity.Warning">Stats unavailable.</MudAlert>
+}
 else
 {
     <MudGrid>
@@ -23,7 +27,7 @@ else
             <MudPaper Class="pa-4" Elevation="2">
                 <MudStack AlignItems="AlignItems.Center" Spacing="1">
                     <MudIcon Icon="@Icons.Material.Filled.People" Color="Color.Primary" Size="Size.Large" />
-                    <MudText Typo="Typo.h4">@_stats!.TotalCoaches</MudText>
+                    <MudText Typo="Typo.h4">@_stats.TotalCoaches</MudText>
                     <MudText Typo="Typo.body2" Class="mud-text-secondary">Total Coaches</MudText>
                 </MudStack>
             </MudPaper>
@@ -33,7 +37,7 @@ else
             <MudPaper Class="pa-4" Elevation="2">
                 <MudStack AlignItems="AlignItems.Center" Spacing="1">
                     <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Large" />
-                    <MudText Typo="Typo.h4">@_stats!.ActiveCoaches</MudText>
+                    <MudText Typo="Typo.h4">@_stats.ActiveCoaches</MudText>
                     <MudText Typo="Typo.body2" Class="mud-text-secondary">Active Coaches</MudText>
                 </MudStack>
             </MudPaper>
@@ -43,7 +47,7 @@ else
             <MudPaper Class="pa-4" Elevation="2">
                 <MudStack AlignItems="AlignItems.Center" Spacing="1">
                     <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Color="Color.Warning" Size="Size.Large" />
-                    <MudText Typo="Typo.h4">@_stats!.PendingCoaches</MudText>
+                    <MudText Typo="Typo.h4">@_stats.PendingCoaches</MudText>
                     <MudText Typo="Typo.body2" Class="mud-text-secondary">Pending Approval</MudText>
                 </MudStack>
             </MudPaper>
@@ -53,7 +57,7 @@ else
             <MudPaper Class="pa-4" Elevation="2">
                 <MudStack AlignItems="AlignItems.Center" Spacing="1">
                     <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Info" Size="Size.Large" />
-                    <MudText Typo="Typo.h4">@_stats!.TotalTrainees</MudText>
+                    <MudText Typo="Typo.h4">@_stats.TotalTrainees</MudText>
                     <MudText Typo="Typo.body2" Class="mud-text-secondary">Total Trainees</MudText>
                 </MudStack>
             </MudPaper>

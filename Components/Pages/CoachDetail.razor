@@ -134,14 +134,14 @@ else
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Success"
                                            Size="Size.Small"
-                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           Disabled="@(_busyCertId is not null || IsPending(cert) is false)"
                                            OnClick="@(() => ApproveAsync(cert.Id))">
                                     Approve
                                 </MudButton>
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Error"
                                            Size="Size.Small"
-                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           Disabled="@(_busyCertId is not null || IsPending(cert) is false)"
                                            OnClick="@(() => RejectAsync(cert.Id))">
                                     Reject
                                 </MudButton>
@@ -274,7 +274,7 @@ else
     private static bool IsPending(AdminCertificateResponse c) =>
         string.Equals(c.Status, "Pending", StringComparison.OrdinalIgnoreCase);
 
-    private static Color StatusColor(string status) => status?.ToLowerInvariant() switch
+    private static Color StatusColor(string status) => status.ToLowerInvariant() switch
     {
         "approved" => Color.Success,
         "rejected" => Color.Error,
