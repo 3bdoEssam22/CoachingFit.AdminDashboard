@@ -47,17 +47,20 @@ CoachingFit.AdminDashboard/
 │       ├── AllTrainees.razor            — /trainees — all trainees list
 │       ├── TraineeDetail.razor          — /trainees/{profileId} — read-only trainee view
 │       └── RejectReasonDialog.razor     — MudDialog used from CoachDetail
-├── Services/
-│   ├── TokenStore.cs                    — scoped: holds AuthResponse (incl. JWT) for current circuit
-│   ├── CircuitAuthenticationStateProvider.cs
-│   │                                    — scoped: builds ClaimsPrincipal from TokenStore; notifies on sign-in/out
-│   ├── AuthApiClient.cs                 — POST /api/Auth/login
-│   ├── CoachApiClient.cs                — GET pending/all list, GET stats, GET profiles, PUT activate
-│   ├── CertificateApiClient.cs          — GET coach certs, GET all pending, PUT approve, PUT reject
-│   └── TraineeApiClient.cs              — GET all trainee IDs, GET all profiles, GET by id
-└── Infrastructure/
-    └── BearerTokenHandler.cs            — DelegatingHandler that adds Authorization: Bearer
+└── Services/
+    ├── TokenStore.cs                    — scoped: holds AuthResponse (incl. JWT) for current circuit
+    ├── CircuitAuthenticationStateProvider.cs
+    │                                    — scoped: builds ClaimsPrincipal from TokenStore; notifies on sign-in/out
+    ├── AuthApiClient.cs                 — POST /api/Auth/login
+    ├── CoachApiClient.cs                — coaches lists/stats/details/summary + activate/reject/deactivate
+    ├── CertificateApiClient.cs          — GET coach certs, GET all pending, PUT approve, PUT reject
+    └── TraineeApiClient.cs              — GET all trainee IDs, GET all profiles, GET by id
 ```
+
+No `Infrastructure/` folder. The JWT used to be injected by a `BearerTokenHandler` delegating handler;
+that approach was removed because `IHttpClientFactory` resolves handlers in its own scope, separate
+from the Blazor circuit's scope, so the handler always saw an empty `TokenStore`. The API clients now
+inject `TokenStore` directly and set `DefaultRequestHeaders.Authorization` once per instance.
 
 ---
 
@@ -66,14 +69,29 @@ CoachingFit.AdminDashboard/
 There is **no cookie auth and no minimal-API login endpoint**. Both add complexity that an internal admin tool used by one or two people doesn't need.
 
 Instead:
-1. `Login.razor` calls `AuthApiClient.LoginAsync(...)` → backend `POST /api/Auth/login`.
+1. `Login.razor` calls `AuthApiClient.LoginAsync(...)` → backend `POST /api/Auth/login`. Enter key submits.
 2. On 200, if `role == "Admin"` → `CircuitAuthenticationStateProvider.SignIn(authResponse)`.
 3. That:
    - Stores the `AuthResponse` (with the JWT) in scoped `TokenStore`.
    - Builds a `ClaimsPrincipal` (NameIdentifier = userId, Role = "Admin", etc.) and notifies `AuthenticationState` listeners.
-4. `[Authorize(Roles="Admin")]` on every protected page is satisfied.
-5. `BearerTokenHandler` reads `TokenStore.AccessToken` on every outbound HTTP call → adds `Authorization: Bearer <jwt>`.
+4. `[Authorize(Roles="Admin")]` on every protected page is satisfied via the cascaded auth state.
+5. Each typed API client (`CoachApiClient`, `CertificateApiClient`, `TraineeApiClient`) **takes
+   `TokenStore` as a constructor dependency** and sets `_http.DefaultRequestHeaders.Authorization`
+   once. `AddHttpClient<TClient>` constructs typed clients in the **caller's** DI scope (the circuit),
+   so `TokenStore` resolves to the same instance that `Login.razor` wrote to. A `DelegatingHandler`
+   approach does **not** work here — `IHttpClientFactory` resolves handlers in its own internal
+   scope, where `TokenStore` is empty.
 6. Logout = `CircuitAuthenticationStateProvider.SignOut()` → clears `TokenStore`, redirects to `/login`.
+
+**Render mode:** `<Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />` in
+`App.razor`. Prerender is **disabled** because the first SSR pass runs in a fresh HTTP scope where
+`TokenStore` is empty — without this, every protected page's `OnInitializedAsync` would 401 against
+the backend and freeze the error into the UI before the circuit takes over.
+
+**Stub Cookie scheme:** `Program.cs` registers `AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(...)`
+with `LoginPath = "/login"`. This is **only** to give `AuthorizationMiddleware` a handler to call
+`ChallengeAsync` on when an anonymous user hits an `[Authorize]` page directly via URL. No cookie
+is ever issued — `HttpContext.SignInAsync` is never called. The JWT still lives only in `TokenStore`.
 
 **Known consequence:** state is per-circuit. Browser reload = new circuit = re-login.
 This is acceptable for v1. Cookies + persistent auth = later.
@@ -89,8 +107,11 @@ This is acceptable for v1. Cookies + persistent auth = later.
 | POST | `/api/Auth/login` | `AuthApiClient` |
 | GET  | `/api/Auth/coaches/pending` | `CoachApiClient.GetPendingUserIdsAsync` — returns `IEnumerable<string>` |
 | GET  | `/api/Auth/coaches/all` | `CoachApiClient.GetAllUserIdsAsync` — returns `IEnumerable<string>` |
+| GET  | `/api/Auth/coaches/details` | `CoachApiClient.GetCoachDetailsAsync` — `IEnumerable<CoachUserSummary>` (incl. FullName, Email, IsActive, RejectionReason) |
+| GET  | `/api/Auth/coaches/{id}/summary` | `CoachApiClient.GetSummaryAsync` — single `CoachUserSummary` |
 | GET  | `/api/Auth/trainees/all` | `TraineeApiClient.GetAllUserIdsAsync` — returns `IEnumerable<string>` |
-| GET  | `/api/Auth/stats` | `CoachApiClient.GetStatsAsync` — returns `AdminStatsResponse` |
+| GET  | `/api/Auth/trainees/details` | `TraineeApiClient.GetTraineeDetailsAsync` — `IEnumerable<TraineeUserSummary>` (FullName + Email) |
+| GET  | `/api/Auth/stats` | `CoachApiClient.GetStatsAsync` — returns `AdminStatsResponse` (pending excludes rejected) |
 | GET  | `/api/CoachProfile/pending?userIds=` | `CoachApiClient.GetProfilesByUserIdsAsync` — takes list of userIds |
 | GET  | `/api/CoachProfile/all` | `CoachApiClient.GetAllProfilesAsync` — returns all coach profiles |
 | GET  | `/api/TraineeProfile/all` | `TraineeApiClient.GetAllProfilesAsync` — returns all trainee profiles |
@@ -99,7 +120,9 @@ This is acceptable for v1. Cookies + persistent auth = later.
 | GET  | `/api/CoachCertificate/pending` | `CertificateApiClient.GetAllPendingAsync` — used by Dashboard page |
 | PUT  | `/api/CoachCertificate/{id:guid}/approve` | `CertificateApiClient.ApproveAsync` |
 | PUT  | `/api/CoachCertificate/{id:guid}/reject` (JSON body: `RejectCertificateRequest`) | `CertificateApiClient.RejectAsync` |
-| PUT  | `/api/Auth/coaches/{id}/activate` | `CoachApiClient.ActivateAsync` (id = userId string) |
+| PUT  | `/api/Auth/coaches/{id}/activate` | `CoachApiClient.ActivateAsync` (id = userId string) — clears any RejectionReason |
+| PUT  | `/api/Auth/coaches/{id}/reject` (JSON body: `RejectCoachRequest`) | `CoachApiClient.RejectAsync` — persists reason, sends email |
+| PUT  | `/api/Auth/coaches/{id}/deactivate` (JSON body: `DeactivateCoachRequest`) | `CoachApiClient.DeactivateAsync` — sets IsActive=false, sends email |
 
 Everything goes through the YARP gateway. **Never call services directly.**
 
@@ -153,12 +176,15 @@ Admin credentials come from `Seeding:AdminEmail` / `Seeding:AdminPassword` user 
 
 ## What's built (v2)
 
-- Login (/login) — MudForm, role check, redirects with returnUrl
-- Dashboard (/dashboard) — 4 stat cards (total/active/pending coaches + total trainees) + pending coaches preview + pending certs preview
-- Pending coaches list (/coaches/pending) — MudTable with photo, userId, gender, experience, created-at
-- All coaches list (/coaches) — MudTable with status chip (Active/Pending), search by userId/gender
-- Coach detail (/coaches/{userId}) — profile card + certificate list + per-cert Approve/Reject + Activate Coach
-- Reject dialog — required reason, MudTextField multiline
+- Login (/login) — MudForm, role check, redirects with returnUrl, **Enter key submits**
+- Dashboard (/dashboard) — 4 stat cards (total/active/pending coaches + total trainees, pending excludes rejected) + pending coaches preview + pending certs preview
+- Pending coaches list (/coaches/pending) — MudTable; **excludes rejected coaches**
+- All coaches list (/coaches) — MudTable with **Name + Email columns** and status chip (**Active / Pending / Rejected**), search by name/email/gender
+- Coach detail (/coaches/{userId}) — profile card + certificate list + per-cert Approve/Reject + action buttons:
+  - **Inactive (pending OR rejected):** Activate Coach (green) + Reject Coach (red)
+  - **Active:** Deactivate Coach (yellow)
+  - **Rejected coaches show a red banner with the rejection reason + date**
+- Reject / Deactivate flows reuse the **`RejectReasonDialog`** (required reason, MudTextField multiline); both persist the reason on the user and send a notification email
 - Trainees list (/trainees) — MudTable with search, read-only
 - Trainee detail (/trainees/{profileId}) — profile card with DOB, weight, height, fitness level, goals, medical notes
 - AuthorizeRouteView + RedirectToLogin guard
@@ -199,4 +225,7 @@ Admin credentials come from `Seeding:AdminEmail` / `Seeding:AdminPassword` user 
 ---
 
 ## Repository
-*Pending first push — `git init` done, no remote yet.*
+
+`github.com/3bdoEssam22/CoachingFit.AdminDashboard`. Active work happens on `feature/*` branches
+(currently `feature/dashboard-v2`), PRs land in `Development`, and `Development` periodically merges
+to `main`.

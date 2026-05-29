@@ -1,7 +1,9 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using CoachingFit.Identity.Shared.DTOs.Responses;
 using CoachingFit.User.Shared.DTOs.Responses;
 using IdentityIdsResponse = CoachingFit.Identity.Shared.Wrappers.GenericResponse<System.Collections.Generic.IEnumerable<string>>;
+using IdentityTraineeDetailsResponse = CoachingFit.Identity.Shared.Wrappers.GenericResponse<System.Collections.Generic.IEnumerable<CoachingFit.Identity.Shared.DTOs.Responses.TraineeUserSummary>>;
 using UserTraineeResponse = CoachingFit.User.Shared.Wrappers.GenericResponse<CoachingFit.User.Shared.DTOs.Responses.TraineeProfileResponse>;
 using UserTraineesResponse = CoachingFit.User.Shared.Wrappers.GenericResponse<System.Collections.Generic.IEnumerable<CoachingFit.User.Shared.DTOs.Responses.TraineeProfileResponse>>;
 
@@ -35,5 +37,11 @@ public class TraineeApiClient
         var resp = await _http.GetFromJsonAsync<UserTraineeResponse>(
             $"api/TraineeProfile/{profileId}", ct);
         return resp?.Data;
+    }
+
+    public async Task<IEnumerable<TraineeUserSummary>> GetTraineeDetailsAsync(CancellationToken ct = default)
+    {
+        var resp = await _http.GetFromJsonAsync<IdentityTraineeDetailsResponse>("api/Auth/trainees/details", ct);
+        return resp?.Data ?? [];
     }
 }

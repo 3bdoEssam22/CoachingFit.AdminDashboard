@@ -21,7 +21,7 @@ else
               Filter="@(t => FilterTrainee(t, _search))">
         <ToolBarContent>
             <MudTextField @bind-Value="_search"
-                          Placeholder="Search by userId or gender..."
+                          Placeholder="Search by name, email, or gender..."
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search"
                           IconSize="Size.Medium"
@@ -29,7 +29,8 @@ else
         </ToolBarContent>
         <HeaderContent>
             <MudTh>Photo</MudTh>
-            <MudTh>User ID</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Email</MudTh>
             <MudTh>Gender</MudTh>
             <MudTh>Fitness Level</MudTh>
             <MudTh>Created</MudTh>
@@ -50,7 +51,8 @@ else
                     </MudAvatar>
                 }
             </MudTd>
-            <MudTd>@context.UserId</MudTd>
+            <MudTd>@(_userInfo.TryGetValue(context.UserId, out var info) ? info.FullName : "—")</MudTd>
+            <MudTd>@(_userInfo.TryGetValue(context.UserId, out var emailInfo) ? emailInfo.Email : "—")</MudTd>
             <MudTd>@context.Gender</MudTd>
             <MudTd>@context.FitnessLevel</MudTd>
             <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
@@ -73,12 +75,18 @@ else
     private string? _error;
     private string _search = string.Empty;
     private List<CoachingFit.User.Shared.DTOs.Responses.TraineeProfileResponse> _trainees = new();
+    private Dictionary<string, CoachingFit.Identity.Shared.DTOs.Responses.TraineeUserSummary> _userInfo = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            _trainees = (await TraineeApi.GetAllProfilesAsync()).ToList();
+            var profilesTask = TraineeApi.GetAllProfilesAsync();
+            var detailsTask = TraineeApi.GetTraineeDetailsAsync();
+            await Task.WhenAll(profilesTask, detailsTask);
+
+            _trainees = (await profilesTask).ToList();
+            _userInfo = (await detailsTask).ToDictionary(d => d.UserId);
         }
         catch (HttpRequestException ex)
         {
@@ -90,11 +98,13 @@ else
         }
     }
 
-    private static bool FilterTrainee(
+    private bool FilterTrainee(
         CoachingFit.User.Shared.DTOs.Responses.TraineeProfileResponse t, string search)
     {
         if (string.IsNullOrWhiteSpace(search)) return true;
-        return t.UserId.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || t.Gender.Contains(search, StringComparison.OrdinalIgnoreCase);
+        var info = _userInfo.GetValueOrDefault(t.UserId);
+        return t.Gender.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || (info?.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (info?.Email.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 }
