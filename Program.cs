@@ -1,6 +1,6 @@
 using CoachingFit.AdminDashboard.Components;
-using CoachingFit.AdminDashboard.Infrastructure;
 using CoachingFit.AdminDashboard.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using MudBlazor.Services;
 
@@ -14,26 +14,28 @@ builder.Services.AddMudServices();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddAuthorizationCore();
 
+// Stub auth scheme — used ONLY so AuthorizationMiddleware can challenge anonymous SSR
+// requests by redirecting to /login. No cookie is ever issued; the JWT stays in scoped
+// TokenStore per CLAUDE.md. AuthenticationStateProvider remains CircuitAuthenticationStateProvider.
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.AccessDeniedPath = "/login";
+    });
+
 builder.Services.AddScoped<TokenStore>();
 builder.Services.AddScoped<CircuitAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
     sp.GetRequiredService<CircuitAuthenticationStateProvider>());
 
-builder.Services.AddScoped<BearerTokenHandler>();
-
 var apiBaseUrl = builder.Configuration["Api:BaseUrl"]
     ?? throw new InvalidOperationException("Api:BaseUrl is not configured.");
 
 builder.Services.AddHttpClient<AuthApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl));
-
-builder.Services.AddHttpClient<CoachApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl))
-    .AddHttpMessageHandler<BearerTokenHandler>();
-
-builder.Services.AddHttpClient<CertificateApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl))
-    .AddHttpMessageHandler<BearerTokenHandler>();
-
-builder.Services.AddHttpClient<TraineeApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl))
-    .AddHttpMessageHandler<BearerTokenHandler>();
+builder.Services.AddHttpClient<CoachApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<CertificateApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl));
+builder.Services.AddHttpClient<TraineeApiClient>(c => c.BaseAddress = new Uri(apiBaseUrl));
 
 var app = builder.Build();
 
@@ -44,6 +46,9 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseAntiforgery();
 

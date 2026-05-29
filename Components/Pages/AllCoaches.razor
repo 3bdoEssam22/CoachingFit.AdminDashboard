@@ -21,7 +21,7 @@ else
               Filter="@(c => FilterCoach(c, _search))">
         <ToolBarContent>
             <MudTextField @bind-Value="_search"
-                          Placeholder="Search by userId or gender..."
+                          Placeholder="Search by name, email, or gender..."
                           Adornment="Adornment.Start"
                           AdornmentIcon="@Icons.Material.Filled.Search"
                           IconSize="Size.Medium"
@@ -29,7 +29,8 @@ else
         </ToolBarContent>
         <HeaderContent>
             <MudTh>Photo</MudTh>
-            <MudTh>User ID</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh>Email</MudTh>
             <MudTh>Gender</MudTh>
             <MudTh>Experience</MudTh>
             <MudTh>Status</MudTh>
@@ -51,15 +52,20 @@ else
                     </MudAvatar>
                 }
             </MudTd>
-            <MudTd>@context.UserId</MudTd>
+            <MudTd>@(_userInfo.TryGetValue(context.UserId, out var info) ? info.FullName : "—")</MudTd>
+            <MudTd>@(_userInfo.TryGetValue(context.UserId, out var emailInfo) ? emailInfo.Email : "—")</MudTd>
             <MudTd>@context.Gender</MudTd>
             <MudTd>@context.ExperienceYears yrs</MudTd>
             <MudTd>
+                @{
+                    _userInfo.TryGetValue(context.UserId, out var statusInfo);
+                    var (label, color) = StatusFor(statusInfo);
+                }
                 <MudChip T="string"
-                         Color="@(_activeIds.Contains(context.UserId) ? Color.Success : Color.Warning)"
+                         Color="@color"
                          Variant="Variant.Filled"
                          Size="Size.Small">
-                    @(_activeIds.Contains(context.UserId) ? "Active" : "Pending")
+                    @label
                 </MudChip>
             </MudTd>
             <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</MudTd>
@@ -82,21 +88,18 @@ else
     private string? _error;
     private string _search = string.Empty;
     private List<CoachingFit.User.Shared.DTOs.Responses.CoachProfileResponse> _coaches = new();
-    private HashSet<string> _activeIds = new();
+    private Dictionary<string, CoachingFit.Identity.Shared.DTOs.Responses.CoachUserSummary> _userInfo = new();
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             var profilesTask = CoachApi.GetAllProfilesAsync();
-            var allIdsTask = CoachApi.GetAllUserIdsAsync();
-            var pendingIdsTask = CoachApi.GetPendingUserIdsAsync();
-            await Task.WhenAll(profilesTask, allIdsTask, pendingIdsTask);
+            var detailsTask = CoachApi.GetCoachDetailsAsync();
+            await Task.WhenAll(profilesTask, detailsTask);
 
             _coaches = (await profilesTask).ToList();
-            var allIds = (await allIdsTask).ToHashSet();
-            var pendingIds = (await pendingIdsTask).ToHashSet();
-            _activeIds = allIds.Except(pendingIds).ToHashSet();
+            _userInfo = (await detailsTask).ToDictionary(d => d.UserId);
         }
         catch (HttpRequestException ex)
         {
@@ -108,11 +111,22 @@ else
         }
     }
 
-    private static bool FilterCoach(
+    private bool FilterCoach(
         CoachingFit.User.Shared.DTOs.Responses.CoachProfileResponse c, string search)
     {
         if (string.IsNullOrWhiteSpace(search)) return true;
-        return c.UserId.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || c.Gender.Contains(search, StringComparison.OrdinalIgnoreCase);
+        var info = _userInfo.GetValueOrDefault(c.UserId);
+        return c.Gender.Contains(search, StringComparison.OrdinalIgnoreCase)
+            || (info?.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (info?.Email.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private static (string Label, Color Color) StatusFor(
+        CoachingFit.Identity.Shared.DTOs.Responses.CoachUserSummary? info)
+    {
+        if (info is null) return ("—", Color.Default);
+        if (info.IsActive) return ("Active", Color.Success);
+        if (info.RejectionReason is not null) return ("Rejected", Color.Error);
+        return ("Pending", Color.Warning);
     }
 }

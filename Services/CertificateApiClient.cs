@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using CoachingFit.User.Shared.DTOs.Requests;
 using CoachingFit.User.Shared.DTOs.Responses;
@@ -6,8 +7,17 @@ using UserCertListResponse = CoachingFit.User.Shared.Wrappers.GenericResponse<Sy
 
 namespace CoachingFit.AdminDashboard.Services;
 
-public class CertificateApiClient(HttpClient _http)
+public class CertificateApiClient
 {
+    private readonly HttpClient _http;
+
+    public CertificateApiClient(HttpClient http, TokenStore tokenStore)
+    {
+        _http = http;
+        if (tokenStore.AccessToken is { } token)
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
+
     public async Task<IEnumerable<AdminCertificateResponse>> GetForCoachAsync(
         string coachUserId, CancellationToken ct = default)
     {

@@ -22,7 +22,8 @@
                               InputType="InputType.Email"
                               Required="true"
                               RequiredError="Email is required."
-                              Variant="Variant.Outlined" />
+                              Variant="Variant.Outlined"
+                              OnKeyDown="OnKeyDownAsync" />
                 <MudTextField T="string"
                               @bind-Value="_credentials.Password"
                               Label="Password"
@@ -30,7 +31,8 @@
                               Required="true"
                               RequiredError="Password is required."
                               Variant="Variant.Outlined"
-                              Class="mt-3" />
+                              Class="mt-3"
+                              OnKeyDown="OnKeyDownAsync" />
             </MudForm>
 
             <MudButton Variant="Variant.Filled"
@@ -59,6 +61,12 @@
     private MudForm? _form;
     private bool _busy;
     private readonly LoginRequest _credentials = new() { Email = string.Empty, Password = string.Empty };
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_busy)
+            await SubmitAsync();
+    }
 
     private async Task SubmitAsync()
     {

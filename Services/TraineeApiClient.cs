@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using CoachingFit.User.Shared.DTOs.Responses;
 using IdentityIdsResponse = CoachingFit.Identity.Shared.Wrappers.GenericResponse<System.Collections.Generic.IEnumerable<string>>;
@@ -6,8 +7,17 @@ using UserTraineesResponse = CoachingFit.User.Shared.Wrappers.GenericResponse<Sy
 
 namespace CoachingFit.AdminDashboard.Services;
 
-public class TraineeApiClient(HttpClient _http)
+public class TraineeApiClient
 {
+    private readonly HttpClient _http;
+
+    public TraineeApiClient(HttpClient http, TokenStore tokenStore)
+    {
+        _http = http;
+        if (tokenStore.AccessToken is { } token)
+            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+    }
+
     public async Task<IEnumerable<string>> GetAllUserIdsAsync(CancellationToken ct = default)
     {
         var resp = await _http.GetFromJsonAsync<IdentityIdsResponse>("api/Auth/trainees/all", ct);
