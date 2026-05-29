@@ -38,18 +38,23 @@ CoachingFit.AdminDashboard/
 │   │   ├── EmptyLayout.razor            — used by Login.razor (no app bar / drawer)
 │   │   └── NavMenu.razor
 │   └── Pages/
-│       ├── Home.razor                   — / — redirects to /coaches/pending
+│       ├── Home.razor                   — / — redirects to /dashboard
 │       ├── Login.razor                  — /login (uses EmptyLayout)
+│       ├── Dashboard.razor              — /dashboard — stats cards + pending previews
 │       ├── PendingCoaches.razor         — /coaches/pending
+│       ├── AllCoaches.razor             — /coaches — all coaches with status chip
 │       ├── CoachDetail.razor            — /coaches/{userId}
+│       ├── AllTrainees.razor            — /trainees — all trainees list
+│       ├── TraineeDetail.razor          — /trainees/{profileId} — read-only trainee view
 │       └── RejectReasonDialog.razor     — MudDialog used from CoachDetail
 ├── Services/
 │   ├── TokenStore.cs                    — scoped: holds AuthResponse (incl. JWT) for current circuit
 │   ├── CircuitAuthenticationStateProvider.cs
 │   │                                    — scoped: builds ClaimsPrincipal from TokenStore; notifies on sign-in/out
 │   ├── AuthApiClient.cs                 — POST /api/Auth/login
-│   ├── CoachApiClient.cs                — GET pending list, GET profiles, PUT activate
-│   └── CertificateApiClient.cs          — GET coach certs, PUT approve, PUT reject
+│   ├── CoachApiClient.cs                — GET pending/all list, GET stats, GET profiles, PUT activate
+│   ├── CertificateApiClient.cs          — GET coach certs, GET all pending, PUT approve, PUT reject
+│   └── TraineeApiClient.cs              — GET all trainee IDs, GET all profiles, GET by id
 └── Infrastructure/
     └── BearerTokenHandler.cs            — DelegatingHandler that adds Authorization: Bearer
 ```
@@ -83,8 +88,15 @@ This is acceptable for v1. Cookies + persistent auth = later.
 |---|---|---|
 | POST | `/api/Auth/login` | `AuthApiClient` |
 | GET  | `/api/Auth/coaches/pending` | `CoachApiClient.GetPendingUserIdsAsync` — returns `IEnumerable<string>` |
+| GET  | `/api/Auth/coaches/all` | `CoachApiClient.GetAllUserIdsAsync` — returns `IEnumerable<string>` |
+| GET  | `/api/Auth/trainees/all` | `TraineeApiClient.GetAllUserIdsAsync` — returns `IEnumerable<string>` |
+| GET  | `/api/Auth/stats` | `CoachApiClient.GetStatsAsync` — returns `AdminStatsResponse` |
 | GET  | `/api/CoachProfile/pending?userIds=` | `CoachApiClient.GetProfilesByUserIdsAsync` — takes list of userIds |
+| GET  | `/api/CoachProfile/all` | `CoachApiClient.GetAllProfilesAsync` — returns all coach profiles |
+| GET  | `/api/TraineeProfile/all` | `TraineeApiClient.GetAllProfilesAsync` — returns all trainee profiles |
+| GET  | `/api/TraineeProfile/{id:guid}` | `TraineeApiClient.GetByIdAsync` — by profile Guid |
 | GET  | `/api/CoachCertificate/coach/{coachUserId}` | `CertificateApiClient.GetForCoachAsync` |
+| GET  | `/api/CoachCertificate/pending` | `CertificateApiClient.GetAllPendingAsync` — used by Dashboard page |
 | PUT  | `/api/CoachCertificate/{id:guid}/approve` | `CertificateApiClient.ApproveAsync` |
 | PUT  | `/api/CoachCertificate/{id:guid}/reject` (JSON body: `RejectCertificateRequest`) | `CertificateApiClient.RejectAsync` |
 | PUT  | `/api/Auth/coaches/{id}/activate` | `CoachApiClient.ActivateAsync` (id = userId string) |
@@ -139,23 +151,24 @@ Admin credentials come from `Seeding:AdminEmail` / `Seeding:AdminPassword` user 
 
 ---
 
-## What's built (v1 MVP)
+## What's built (v2)
 
 - Login (/login) — MudForm, role check, redirects with returnUrl
+- Dashboard (/dashboard) — 4 stat cards (total/active/pending coaches + total trainees) + pending coaches preview + pending certs preview
 - Pending coaches list (/coaches/pending) — MudTable with photo, userId, gender, experience, created-at
+- All coaches list (/coaches) — MudTable with status chip (Active/Pending), search by userId/gender
 - Coach detail (/coaches/{userId}) — profile card + certificate list + per-cert Approve/Reject + Activate Coach
 - Reject dialog — required reason, MudTextField multiline
+- Trainees list (/trainees) — MudTable with search, read-only
+- Trainee detail (/trainees/{profileId}) — profile card with DOB, weight, height, fitness level, goals, medical notes
 - AuthorizeRouteView + RedirectToLogin guard
 
 ## Not built (deferred)
 
-- User search / list (all coaches, all trainees) — needs backend endpoints
-- Dashboard / metrics — needs backend aggregate endpoints
-- Trainee profile review
 - Plan / order / wallet management — those services don't exist yet
 - SignalR live notifications ("new pending coach" toast) — revisit after plan-request feature
 - Token refresh — re-login on 401
-- Audit log
+- Audit log of admin actions
 - Pagination — N/A at current scale
 - Production hosting / Docker / CI
 - NuGet packaging of `Backend/...Shared/`

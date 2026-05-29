@@ -29,6 +29,16 @@ else if (_profile is null)
 }
 else
 {
+    @if (_summary?.RejectionReason is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3" Icon="@Icons.Material.Filled.Cancel">
+            <MudText Typo="Typo.subtitle2">
+                Rejected@(_summary.RejectedAt is not null ? $" on {_summary.RejectedAt.Value.ToLocalTime():yyyy-MM-dd}" : "")
+            </MudText>
+            <MudText Typo="Typo.body2">@_summary.RejectionReason</MudText>
+        </MudAlert>
+    }
+
     <MudGrid>
         <MudItem xs="12" md="4">
             <MudPaper Class="pa-4" Elevation="2">
@@ -70,23 +80,80 @@ else
             </MudPaper>
 
             <MudPaper Class="pa-4 mt-3" Elevation="2">
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Success"
-                           FullWidth="true"
-                           Size="Size.Large"
-                           StartIcon="@Icons.Material.Filled.CheckCircle"
-                           Disabled="_activating"
-                           OnClick="ActivateAsync">
-                    @if (_activating)
+                <MudStack Spacing="2">
+                    @if (_summary?.IsActive == true)
                     {
-                        <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                        <span class="ml-2">Activating...</span>
+                        <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Class="align-self-center mb-1">
+                            Active
+                        </MudChip>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Warning"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.Block"
+                                   Disabled="@_deactivating"
+                                   OnClick="DeactivateCoachAsync">
+                            @if (_deactivating)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Deactivating...</span>
+                            }
+                            else
+                            {
+                                <span>Deactivate Coach</span>
+                            }
+                        </MudButton>
                     }
                     else
                     {
-                        <span>Activate Coach</span>
+                        @if (_summary?.RejectionReason is not null)
+                        {
+                            <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Class="align-self-center mb-1">
+                                Rejected
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Warning" Variant="Variant.Filled" Class="align-self-center mb-1">
+                                Pending
+                            </MudChip>
+                        }
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.CheckCircle"
+                                   Disabled="@(_activating || _rejecting)"
+                                   OnClick="ActivateAsync">
+                            @if (_activating)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                                <span class="ml-2">Activating...</span>
+                            }
+                            else
+                            {
+                                <span>Activate Coach</span>
+                            }
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Error"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.Cancel"
+                                   Disabled="@(_activating || _rejecting)"
+                                   OnClick="RejectCoachAsync">
+                        @if (_rejecting)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            <span class="ml-2">Rejecting...</span>
+                        }
+                        else
+                        {
+                            <span>Reject Coach</span>
+                        }
+                        </MudButton>
                     }
-                </MudButton>
+                </MudStack>
             </MudPaper>
         </MudItem>
 
@@ -134,14 +201,14 @@ else
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Success"
                                            Size="Size.Small"
-                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           Disabled="@(_busyCertId is not null || IsPending(cert) is false)"
                                            OnClick="@(() => ApproveAsync(cert.Id))">
                                     Approve
                                 </MudButton>
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Error"
                                            Size="Size.Small"
-                                           Disabled="@(IsPending(cert) is false || _busyCertId == cert.Id)"
+                                           Disabled="@(_busyCertId is not null || IsPending(cert) is false)"
                                            OnClick="@(() => RejectAsync(cert.Id))">
                                     Reject
                                 </MudButton>
@@ -159,9 +226,12 @@ else
 
     private bool _loading = true;
     private bool _activating;
+    private bool _rejecting;
+    private bool _deactivating;
     private Guid? _busyCertId;
     private string? _error;
     private CoachProfileResponse? _profile;
+    private CoachingFit.Identity.Shared.DTOs.Responses.CoachUserSummary? _summary;
     private List<AdminCertificateResponse> _certs = new();
 
     protected override async Task OnInitializedAsync()
@@ -177,10 +247,12 @@ else
         {
             var profilesTask = CoachApi.GetProfilesByUserIdsAsync([UserId]);
             var certsTask = CertApi.GetForCoachAsync(UserId);
-            await Task.WhenAll(profilesTask, certsTask);
+            var summaryTask = CoachApi.GetSummaryAsync(UserId);
+            await Task.WhenAll(profilesTask, certsTask, summaryTask);
 
             _profile = (await profilesTask).FirstOrDefault();
             _certs = (await certsTask).ToList();
+            _summary = await summaryTask;
         }
         catch (HttpRequestException ex)
         {
@@ -271,10 +343,75 @@ else
         }
     }
 
+    private async Task RejectCoachAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<RejectReasonDialog>("Reject coach");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        var reason = (string?)result.Data;
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        _rejecting = true;
+        try
+        {
+            // Auto-reject every still-pending cert with the same reason so the dashboard
+            // doesn't keep showing them as needing review.
+            foreach (var cert in _certs.Where(IsPending).ToList())
+            {
+                await CertApi.RejectAsync(cert.Id, new RejectCertificateRequest { Reason = reason! });
+            }
+
+            var (ok, message) = await CoachApi.RejectAsync(UserId, reason!);
+            if (ok)
+            {
+                Snackbar.Add("Coach rejected. Email sent.", Severity.Info);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(message ?? "Failed to reject the coach.", Severity.Error);
+            }
+        }
+        finally
+        {
+            _rejecting = false;
+        }
+    }
+
+    private async Task DeactivateCoachAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<RejectReasonDialog>("Deactivate coach");
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        var reason = (string?)result.Data;
+        if (string.IsNullOrWhiteSpace(reason)) return;
+
+        _deactivating = true;
+        try
+        {
+            var (ok, message) = await CoachApi.DeactivateAsync(UserId, reason!);
+            if (ok)
+            {
+                Snackbar.Add("Coach deactivated. Email sent.", Severity.Info);
+                await LoadAsync();
+            }
+            else
+            {
+                Snackbar.Add(message ?? "Failed to deactivate the coach.", Severity.Error);
+            }
+        }
+        finally
+        {
+            _deactivating = false;
+        }
+    }
+
     private static bool IsPending(AdminCertificateResponse c) =>
         string.Equals(c.Status, "Pending", StringComparison.OrdinalIgnoreCase);
 
-    private static Color StatusColor(string status) => status?.ToLowerInvariant() switch
+    private static Color StatusColor(string status) => status.ToLowerInvariant() switch
     {
         "approved" => Color.Success,
         "rejected" => Color.Error,
